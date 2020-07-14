@@ -617,6 +617,7 @@ M.Util = {
           count++;
         break;
         case "location":
+          if(!inputs[i].getAttribute("max") || !inputs[i].getAttribute("min")) continue;
           let max = +inputs[i].getAttribute("max"),min = +inputs[i].getAttribute("min");
           switch(inputs[i].getAttribute("axis").toLowerCase()){
             case "x":
@@ -644,12 +645,12 @@ M.Util = {
         break;
         default:
       }
-      if(count >= 3) break;
+      if(count >= 5) break;
     }
     let zoomBoundsFormatted = {minZoom:+template.zoomBounds.min,maxZoom:+template.zoomBounds.max,minNativeZoom:nMinZoom,maxNativeZoom:nMaxZoom};
     return {
       zoomBounds:zoomBoundsFormatted,
-      bounds:this.boundsToPCRSBounds(count===3?bounds:L.bounds(L.point(0,0),L.point(5,5)),count===3?value:0,projection,units)
+      bounds:this.boundsToPCRSBounds(count===5?bounds:L.bounds(L.point(0,0),L.point(5,5)),count===5?value:0,projection,units)
     };
   },
 
@@ -1069,6 +1070,7 @@ M.MapMLLayer = L.Layer.extend({
         this.getPane().appendChild(this._container);
     },
 
+    //sets the <layer-> elements .bounds property 
     _setLayerElBounds: function(){
       var localBounds;
       let layerTypes = ["_staticTileLayer","_imageLayer","_mapmlvectors","_templatedLayer"];
@@ -1577,7 +1579,7 @@ M.MapMLLayer = L.Layer.extend({
                         type: ttype, 
                         values: inputs, 
                         zoomBounds:zoomBounds, 
-                        projection:serverExtent.getAttribute("units") || server.getAttribute("content") || "NONE"
+                        projection:serverExtent.getAttribute("units") || server.getAttribute("content") || "NONE" // TODO: dont think it ever reaches "NONE", need to check
                       });
                     }
                   }
@@ -1602,7 +1604,7 @@ M.MapMLLayer = L.Layer.extend({
                 if (mapml.querySelector('tile')) {
                   var tiles = document.createElement("tiles"),
                     zoom = mapml.querySelector('meta[name=zoom][content]') || mapml.querySelector('input[type=zoom][value]');
-                  tiles.setAttribute("zoom", zoom.getAttribute('content') || zoom.getAttribute('value'));
+                  tiles.setAttribute("zoom", zoom && zoom.getAttribute('content') || zoom && zoom.getAttribute('value') || "0");
                   var newTiles = mapml.getElementsByTagName('tile');
                   for (var nt=0;nt<newTiles.length;nt++) {
                       tiles.appendChild(document.importNode(newTiles[nt], true));
@@ -2226,6 +2228,7 @@ M.TemplatedFeaturesLayer =  L.Layer.extend({
         .catch(function (error) { console.log(error);});
     },
 
+    // TODO: templated layers have very similar _setBoundsFlag methods, might be valuable considering inheriting this function from a paraent class
     _setBoundsFlag : function(){
       let mapZoom = this._map.getZoom();
       let mapBounds = M.pixelToPCRSBounds(this._map.getPixelBounds(),mapZoom,this._map.options.projection);
@@ -3382,7 +3385,10 @@ M.MapMLStaticTileLayer = L.GridLayer.extend({
     let zoomLevel = mapZoom;
     zoomLevel = zoomLevel > this.options.maxNativeZoom? this.options.maxNativeZoom: zoomLevel;
     zoomLevel = zoomLevel < this.options.minNativeZoom? this.options.minNativeZoom: zoomLevel;
-    this.isVisible = mapZoom <= this.zoomBounds.maxZoom && mapZoom >= this.zoomBounds.minZoom && this._bounds[zoomLevel] && this._bounds[zoomLevel].overlaps(M.pixelToPCRSBounds(this._map.getPixelBounds(),this._map.getZoom(),this._map.options.projection));
+    this.isVisible = mapZoom <= this.zoomBounds.maxZoom && 
+                      mapZoom >= this.zoomBounds.minZoom && 
+                      this._bounds[zoomLevel] && 
+                      this._bounds[zoomLevel].overlaps(M.pixelToPCRSBounds(this._map.getPixelBounds(),this._map.getZoom(),this._map.options.projection));
     
     if(!(this.isVisible))return; //onMoveEnd still gets fired even when layer is out of bounds??, most likely need to overrride _onMoveEnd
     this.fire('moveend',e,true);
@@ -3432,6 +3438,8 @@ M.MapMLStaticTileLayer = L.GridLayer.extend({
         layerBounds[sCoords[2]] = L.bounds(L.point(pixelCoords.x ,pixelCoords.y ),L.point(((pixelCoords.x+256) ),((pixelCoords.y+256) )));
       }
     }
+    // TODO: optimize by removing 2nd loop, add util function to convert point in pixels to point in pcrs, use that instead then this loop
+    // won't be needed
     for(let pixelBounds in layerBounds){
       let zoom = +pixelBounds;
       layerBounds[pixelBounds] = M.pixelToPCRSBounds(layerBounds[pixelBounds],zoom,projection);//needs to be changed to get projection of layer
@@ -3440,7 +3448,6 @@ M.MapMLStaticTileLayer = L.GridLayer.extend({
     return layerBounds;
   },
 
-  //switch to minus 2 instead of 3, if specified min is > -2 then go with the minus 2
   _getZoomBounds: function(container, maxZoomBound){
     if(!container) return null;
     let meta = M.metaContentToObject(container.getElementsByTagName('tiles')[0].getAttribute('zoom')),zoom = {},tiles = container.getElementsByTagName("tile");
@@ -3451,6 +3458,9 @@ M.MapMLStaticTileLayer = L.GridLayer.extend({
       if(+tiles[i].getAttribute('zoom') > zoom.maxNativeZoom) zoom.maxNativeZoom = +tiles[i].getAttribute('zoom');
       if(+tiles[i].getAttribute('zoom') < zoom.minNativeZoom) zoom.minNativeZoom = +tiles[i].getAttribute('zoom');
     }
+
+    //hard coded to only natively zoom out 2 levels, any more and too many tiles are going to be loaded in at one time
+    //lagging the users computer
     zoom.minZoom = zoom.minNativeZoom - 2 <= 0? 0: zoom.minNativeZoom - 2;
     zoom.maxZoom = maxZoomBound;
     if(meta.min)zoom.minZoom = +meta.min < (zoom.minNativeZoom - 2)?(zoom.minNativeZoom - 2):+meta.min;
@@ -3494,6 +3504,7 @@ M.MapMLFeatures = L.FeatureGroup.extend({
       L.setOptions(this.options.renderer, {pane: this._container});
       this._layers = {};
       if (mapml) {
+        //needed to check if the feature is static or not, since this method is used by templated also
         if(!mapml.querySelector('extent') && mapml.querySelector('feature')){
           this._features = {};
           this._staticFeature = true;
@@ -3527,19 +3538,32 @@ M.MapMLFeatures = L.FeatureGroup.extend({
       let zoomLevel = this._map.getZoom();
       zoomLevel = zoomLevel > this.zoomBounds.maxNativeZoom? this.zoomBounds.maxNativeZoom: zoomLevel;
       zoomLevel = zoomLevel < this.zoomBounds.minNativeZoom? this.zoomBounds.minNativeZoom: zoomLevel;
-      this.isVisible = this._checkZoom() && this._layers && this.layerBounds && this.layerBounds.overlaps(M.pixelToPCRSBounds(this._map.getPixelBounds(),this._map.getZoom(),this._map.options.projection));
+      this.isVisible = this._checkZoom() && 
+                        this._layers && 
+                        this.layerBounds && 
+                        this.layerBounds.overlaps(M.pixelToPCRSBounds(this._map.getPixelBounds(),this._map.getZoom(),this._map.options.projection));
       this._removeCSS();
     },
 
+    //sets default if any are missing, better to only replace ones that are missing
     _getLayerBounds : function(container) {
       if (!container) return null;
       try{
-        let cs = M.metaContentToObject(container.querySelector('meta[name=cs]').getAttribute('content')).content.toUpperCase();
-        let projection = M.metaContentToObject(container.querySelector('meta[name=projection]').getAttribute('content'));
-        let zoom = M.metaContentToObject(container.querySelector('meta[name=zoom]').getAttribute('content')).value;
-        let meta = M.metaContentToObject(container.querySelector('meta[name=bounds]').getAttribute('content'));
+        let cs = container.querySelector('meta[name=cs]') && 
+                  M.metaContentToObject(container.querySelector('meta[name=cs]').getAttribute('content')).content.toUpperCase() ||
+                  "OSMTILE";
+        let projection = container.querySelector('meta[name=projection]') &&
+                          M.metaContentToObject(container.querySelector('meta[name=projection]').getAttribute('content')).content.toUpperCase() ||
+                          "TILEMATRIX";
+        let zoom = container.querySelector('meta[name=zoom]') && 
+                    M.metaContentToObject(container.querySelector('meta[name=zoom]').getAttribute('content')).value || 
+                    "0";
+        let meta = container.querySelector('meta[name=bounds]') && 
+                    M.metaContentToObject(container.querySelector('meta[name=bounds]').getAttribute('content')) ||
+                    {topLeftVertical:0,topLeftHorizontal:0,bottomRightVertical:5,bottomRightHorizontal:5};
         return M.boundsToPCRSBounds(L.bounds(L.point(+meta.topLeftVertical,+meta.topLeftHorizontal),L.point(+meta.bottomRightVertical,+meta.bottomRightHorizontal)),zoom,projection.content,cs);
       } catch (error){
+        //if error then by default set the layer to osm and bounds to the entire map view
         return M.boundsToPCRSBounds(L.bounds(L.point(0,0),L.point(5,5)),0,"OSMTILE","TILEMATRIX");
       }
     },
@@ -3861,7 +3885,6 @@ M.MapMLLayerControl = L.Control.Layers.extend({
     _validateExtents: function (e) {
       //the settimeout allows the function inside the {} to be moved to the task/callback queue rather than executing immediately
       //allowing the callback function to be run after all the other moveend event handlers
-      //without having to reorder like in the previous iteration
       setTimeout(()=>{
         let layerTypes = ["_staticTileLayer","_imageLayer","_mapmlvectors","_templatedLayer"],layerProjection;
         for (let i = 0; i < this._layers.length; i++) {
@@ -3900,6 +3923,7 @@ M.MapMLLayerControl = L.Control.Layers.extend({
             input[0].parentElement.parentElement.parentElement.parentElement.disabled = true;
             label[0].style.fontStyle = "italic";
           } else {
+            //might be better not to disable the layer controls, might want to deselect layer even when its out of bounds
             input[0].parentElement.parentElement.parentElement.parentElement.disabled = false;
             label[0].style.fontStyle = "normal";
           }
