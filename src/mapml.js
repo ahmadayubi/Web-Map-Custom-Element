@@ -3413,16 +3413,6 @@ M.MapMLStaticTileLayer = L.GridLayer.extend({
     return tileElem;
   },
 
-  //----------------------------------
-  //  minX,minY
-  // 
-  //
-  //
-  //
-  //                      maxX,maxY
-  //----------------------------------
-  //between those is the bounds of the layer
-  //gets the bounds of each zoomlevel in terms of meters
   _getLayerBounds: function(tileGroups, projection){
     let layerBounds = {};
     for(let tile in tileGroups){
