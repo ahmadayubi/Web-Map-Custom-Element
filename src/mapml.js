@@ -601,7 +601,7 @@ window.M = M;
 M.Util = {  
   extractInputBounds: function(template){
     if(!template) return undefined;
-    let inputs = template.values, projection = template.projection || "OSMTILE", count = 0, value = 0, units ="TILEMATRIX";
+    let inputs = template.values, projection = template.projection || "OSMTILE", value = 0, units ="TILEMATRIX";
     let bounds = L.bounds(L.point(0,0),L.point(5,5)), nMinZoom = 0, nMaxZoom = this[projection].options.resolutions.length;
     if(!template.zoomBounds){
       template.zoomBounds ={};
@@ -614,7 +614,6 @@ M.Util = {
           nMinZoom = +inputs[i].getAttribute("min");
           nMaxZoom = +inputs[i].getAttribute("max");
           value = +inputs[i].getAttribute("value");
-          count++;
         break;
         case "location":
           if(!inputs[i].getAttribute("max") || !inputs[i].getAttribute("min")) continue;
@@ -628,7 +627,6 @@ M.Util = {
               units = inputs[i].getAttribute("units");
               bounds.min.x = min;
               bounds.max.x = max;
-              count++;
             break;
             case "y":
             case "i":
@@ -637,7 +635,6 @@ M.Util = {
             case "northing":
               bounds.min.y = min;
               bounds.max.y = max;
-              count++;
             break;
             default:
             break;
@@ -645,12 +642,11 @@ M.Util = {
         break;
         default:
       }
-      if(count >= 5) break;
     }
     let zoomBoundsFormatted = {minZoom:+template.zoomBounds.min,maxZoom:+template.zoomBounds.max,minNativeZoom:nMinZoom,maxNativeZoom:nMaxZoom};
     return {
       zoomBounds:zoomBoundsFormatted,
-      bounds:this.boundsToPCRSBounds(count===5?bounds:L.bounds(L.point(0,0),L.point(5,5)),count===5?value:0,projection,units)
+      bounds:this.boundsToPCRSBounds(bounds,value,projection,units)
     };
   },
 
