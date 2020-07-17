@@ -2719,7 +2719,7 @@ M.TemplatedTileLayer = L.TileLayer.extend({
     getEvents: function(){
       let events = L.TileLayer.prototype.getEvents.call(this,this._map);
       events.moveend = this._setBoundsFlag;
-      //events.move = ()=>{};
+      events.move = function _nullFunction(){};
       return events;
     },
 
