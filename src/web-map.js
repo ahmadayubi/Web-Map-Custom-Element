@@ -153,6 +153,7 @@ export class WebMap extends HTMLMapElement {
           center: new L.LatLng(this.lat, this.lon),
           projection: this.projection,
           query: true,
+          contextMenu: true,
           mapEl: this,
           crs: M[this.projection],
           zoom: this.zoom,

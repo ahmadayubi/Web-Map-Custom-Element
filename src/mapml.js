@@ -786,6 +786,23 @@ M.pixelToPCRSBounds = M.Util.pixelToPCRSBounds;
 M.metaContentToObject = M.Util.metaContentToObject;
 M.coordsToArray = M.Util.coordsToArray;
 M.parseStylesheetAsHTML = M.Util.parseStylesheetAsHTML;
+
+M.ContextMenu = L.Handler.extend({
+  initialize: function(map){
+    
+  },
+
+  addHooks: function(){
+    L.DomEvent.on(this._map, 'contextmenu', this.test, this);
+  },
+  removeHooks: function(){
+    L.DomEvent.off(this._map,'contextmenu',this.test,this);
+  },
+  test : function(e){
+    console.log(e);
+  }
+});
+
 M.QueryHandler = L.Handler.extend({
     addHooks: function() {
         // get a reference to the actual <map> element, so we can 
@@ -957,7 +974,8 @@ M.QueryHandler = L.Handler.extend({
 });
 // see https://leafletjs.com/examples/extending/extending-3-controls.html#handlers
 L.Map.addInitHook('addHandler', 'query', M.QueryHandler);
-M.MapMLLayer = L.Layer.extend({
+L.Map.addInitHook('addHandler','contextMenu',M.ContextMenu);
+M.MapMLLayer = L.Layer.extend({ 
     // zIndex has to be set, for the case where the layer is added to the
     // map before the layercontrol is used to control it (where autoZindex is used)
     // e.g. in the raw MapML-Leaflet-Client index.html page.
