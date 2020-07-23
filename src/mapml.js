@@ -1678,7 +1678,7 @@ M.MapMLLayer = L.Layer.extend({
                         type: ttype, 
                         values: inputs, 
                         zoomBounds:zoomBounds, 
-                        projection:serverExtent.getAttribute("units") || server.getAttribute("content") || "NONE" // TODO: dont think it ever reaches "NONE", need to check
+                        projection:serverExtent.getAttribute("units") || FALLBACK_PROJECTION
                       });
                     }
                   }
@@ -2213,9 +2213,7 @@ M.TemplatedImageLayer =  L.Layer.extend({
             axis = inputs[i].getAttribute("axis"), 
             name = inputs[i].getAttribute("name"), 
             position = inputs[i].getAttribute("position"),
-            select = (inputs[i].tagName.toLowerCase() === "select"),
-            min = inputs[i].getAttribute("min") || min,
-            max = inputs[i].getAttribute("max") || max;
+            select = (inputs[i].tagName.toLowerCase() === "select");
         if (type === "width") {
               extentVarNames.extent.width = name;
         } else if ( type === "height") {
@@ -3496,7 +3494,6 @@ M.MapMLStaticTileLayer = L.GridLayer.extend({
   },
 
   _isValidTile(coords) {
-    //return true;
     return this._groups[this._tileCoordsToKey(coords)];
   },
 
@@ -3536,7 +3533,7 @@ M.MapMLStaticTileLayer = L.GridLayer.extend({
     // won't be needed
     for(let pixelBounds in layerBounds){
       let zoom = +pixelBounds;
-      layerBounds[pixelBounds] = M.pixelToPCRSBounds(layerBounds[pixelBounds],zoom,projection);//needs to be changed to get projection of layer
+      layerBounds[pixelBounds] = M.pixelToPCRSBounds(layerBounds[pixelBounds],zoom,projection);
     }
 
     return layerBounds;
