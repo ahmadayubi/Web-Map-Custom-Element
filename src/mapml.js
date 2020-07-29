@@ -788,18 +788,360 @@ M.coordsToArray = M.Util.coordsToArray;
 M.parseStylesheetAsHTML = M.Util.parseStylesheetAsHTML;
 
 M.ContextMenu = L.Handler.extend({
-  initialize: function(map){
-    
+  _touchstart: L.Browser.msPointer ? 'MSPointerDown' : L.Browser.pointer ? 'pointerdown' : 'touchstart',
+
+  initialize: function (map) {
+    L.Handler.prototype.initialize.call(this, map);
+    this._history = [];
+    this._historyIndex = -1;
+    this._traversalCall = false;
+
+    //setting the items in the context menu and their callback functions
+    this._items = [
+      {
+        text:"Copy Coordinates", 
+        callback:this._copyCoords,
+      },
+      {
+        text:"Back",
+        callback:this._goBack,
+      },
+      {
+        text:"Forward",
+        callback:this._goForward,
+      },
+      {
+        text:"View Map Source",
+        callback:this._viewSource,
+      },
+    ];
+    this._visible = false;
+
+    this._container = L.DomUtil.create("div", "mapml-contextmenu", map._container);
+    this._container.style.zIndex = 10000;
+    this._container.style.position = "absolute";
+
+    this._container.style.width = "140px";
+
+    this._createItems();
+    map.on('moveend',this._addToStack,this);
+
+    L.DomEvent
+      .on(this._container, 'click', L.DomEvent.stop)
+      .on(this._container, 'mousedown', L.DomEvent.stop)
+      .on(this._container, 'dblclick', L.DomEvent.stop)
+      .on(this._container, 'contextmenu', L.DomEvent.stop);
   },
 
-  addHooks: function(){
-    L.DomEvent.on(this._map, 'contextmenu', this.test, this);
+  addHooks: function () {
+    var container = this._map.getContainer();
+
+    L.DomEvent
+      .on(container, 'mouseleave', this._hide, this)
+      .on(document, 'keydown', this._onKeyDown, this);
+
+    if (L.Browser.touch) {
+      L.DomEvent.on(document, this._touchstart, this._hide, this);
+    }
+
+    this._map.on({
+      contextmenu: this._show,
+      mousedown: this._hide,
+      zoomstart: this._hide
+    }, this);
   },
-  removeHooks: function(){
-    L.DomEvent.off(this._map,'contextmenu',this.test,this);
+
+  removeHooks: function () {
+    var container = this._map.getContainer();
+
+    L.DomEvent
+      .off(container, 'mouseleave', this._hide, this)
+      .off(document, 'keydown', this._onKeyDown, this);
+
+    if (L.Browser.touch) {
+      L.DomEvent.off(document, this._touchstart, this._hide, this);
+    }
+
+    this._map.off({
+      contextmenu: this._show,
+      mousedown: this._hide,
+      zoomstart: this._hide
+    }, this);
   },
-  test : function(e){
-    console.log(e);
+
+  _createItems: function () {
+    var itemOptions = this._items,
+        item,
+        i, l;
+
+    for (i = 0, l = itemOptions.length; i < l; i++) {
+      this._items.push(this._createItem(this._container, itemOptions[i]));
+    }
+  },
+
+  _addToStack: function(e){
+    if(this._traversalCall){
+      this._traversalCall = false;
+      return;
+    }
+    let mapLocation = this._map.getCenter();
+    let location ={
+      zoom:this._map.getZoom(),
+      lat:mapLocation.lat,
+      lng:mapLocation.lng,
+    };
+    this._historyIndex++;
+    this._history.push(location);
+  },
+
+  _goForward: function(e){
+    let history = this.contextMenu._history;
+
+    if(this.contextMenu._historyIndex < history.length -1){
+      this.contextMenu._historyIndex++;
+    }
+
+    let next = history[this.contextMenu._historyIndex];
+    
+    this.contextMenu._traversalCall = true;
+    this.options.mapEl.zoomTo(next.lat,next.lng,next.zoom);
+  },
+
+  _goBack: function(e){
+    let history = this.contextMenu._history;
+
+    if(this.contextMenu._historyIndex > 0){
+      this.contextMenu._historyIndex--;
+    }
+
+    let prev = history[this.contextMenu._historyIndex];
+
+    this.contextMenu._traversalCall = true;
+    this.options.mapEl.zoomTo(prev.lat,prev.lng,prev.zoom);
+  },
+
+  _viewSource: function(e){
+    let mapEl = (new XMLSerializer()).serializeToString(this.options.mapEl);
+    let blob = new Blob([`<h1>View map source needs to be implemented</h1>${mapEl}`],{type:"text/html"});
+    let url = URL.createObjectURL(blob);
+    window.open(url);
+    URL.revokeObjectURL(url);
+  },
+
+  _copyCoords: function(e){
+    const el = document.createElement('textarea');
+    el.value = `Latitude:${e.latlng.lat}, Longitude:${e.latlng.lng}`;
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+  },
+
+  _createItem: function (container, options, index) {
+    if (options.separator || options === '-') {
+      return this._createSeparator(container, index);
+    }
+
+    var itemCls = 'mapml-contextmenu-item',
+        cls = options.disabled ? (itemCls + ' ' + itemCls + '-disabled') : itemCls,
+        el = this._insertElementAt('a', cls, container, index),
+        callback = this._createEventHandler(el, options.callback, options.context, options.hideOnSelect),
+        html = '';
+
+    el.innerHTML = html + options.text;
+    el.href = '#';
+
+    L.DomEvent
+      .on(el, 'mouseover', this._onItemMouseOver, this)
+      .on(el, 'mouseout', this._onItemMouseOut, this)
+      .on(el, 'mousedown', L.DomEvent.stopPropagation)
+      .on(el, 'click', callback);
+
+    if (L.Browser.touch) {
+      L.DomEvent.on(el, this._touchstart, L.DomEvent.stopPropagation);
+    }
+
+    // Devices without a mouse fire "mouseover" on tap, but never “mouseout"
+    if (!L.Browser.pointer) {
+      L.DomEvent.on(el, 'click', this._onItemMouseOut, this);
+    }
+
+    return {
+      id: L.Util.stamp(el),
+      el: el,
+      callback: callback
+    };
+  },
+
+  _createSeparator: function (container, index) {
+    let el = this._insertElementAt('div', 'mapml-contextmenu-separator', container, index);
+
+    return {
+      id: L.Util.stamp(el),
+      el: el
+    };
+  },
+
+  _createEventHandler: function (el, func, context, hideOnSelect) {
+    let disabledCls = 'mapml-contextmenu-item-disabled',
+        parent = this;
+
+    hideOnSelect = (hideOnSelect !== undefined) ? hideOnSelect : true;
+
+    return function (e) {
+      if (L.DomUtil.hasClass(el, disabledCls)) {
+        return;
+      }
+
+      let map = parent._map,
+        containerPoint = parent._showLocation.containerPoint,
+        layerPoint = map.containerPointToLayerPoint(containerPoint),
+        latlng = map.layerPointToLatLng(layerPoint),
+        relatedTarget = parent._showLocation.relatedTarget,
+        data = {
+          containerPoint: containerPoint,
+          layerPoint: layerPoint,
+          latlng: latlng,
+          relatedTarget: relatedTarget
+        };
+
+      if (hideOnSelect) {
+        parent._hide();
+      }
+
+      if (func) {
+        func.call(context || map, data);
+      }
+
+      parent._map.fire('contextmenu.select', {
+        contextmenu: parent,
+        el: el
+      });
+    };
+  },
+
+  _insertElementAt: function (tagName, className, container, index) {
+      let refEl,
+          el = document.createElement(tagName);
+
+      el.className = className;
+
+      if (index !== undefined) {
+          refEl = container.children[index];
+      }
+
+      if (refEl) {
+          container.insertBefore(el, refEl);
+      } else {
+          container.appendChild(el);
+      }
+
+      return el;
+  },
+
+  _show: function (e) {
+      this._showAtPoint(e.containerPoint, e);
+  },
+
+  _showAtPoint: function (pt, data) {
+      if (this._items.length) {
+          let event = L.extend(data || {}, {contextmenu: this});
+
+          this._showLocation = {
+              containerPoint: pt
+          };
+
+          if (data && data.relatedTarget){
+              this._showLocation.relatedTarget = data.relatedTarget;
+          }
+
+          this._setPosition(pt);
+
+          if (!this._visible) {
+              this._container.style.display = 'block';
+              this._visible = true;
+          }
+
+          this._map.fire('contextmenu.show', event);
+      }
+  },
+
+  _hide: function () {
+      if (this._visible) {
+          this._visible = false;
+          this._container.style.display = 'none';
+          this._map.fire('contextmenu.hide', {contextmenu: this});
+      }
+  },
+
+  _setPosition: function (pt) {
+      let mapSize = this._map.getSize(),
+          container = this._container,
+          containerSize = this._getElementSize(container),
+          anchor;
+
+      if (this._map.options.contextmenuAnchor) {
+          anchor = L.point(this._map.options.contextmenuAnchor);
+          pt = pt.add(anchor);
+      }
+
+      container._leaflet_pos = pt;
+
+      if (pt.x + containerSize.x > mapSize.x) {
+          container.style.left = 'auto';
+          container.style.right = Math.min(Math.max(mapSize.x - pt.x, 0), mapSize.x - containerSize.x - 1) + 'px';
+      } else {
+          container.style.left = Math.max(pt.x, 0) + 'px';
+          container.style.right = 'auto';
+      }
+
+      if (pt.y + containerSize.y > mapSize.y) {
+          container.style.top = 'auto';
+          container.style.bottom = Math.min(Math.max(mapSize.y - pt.y, 0), mapSize.y - containerSize.y - 1) + 'px';
+      } else {
+          container.style.top = Math.max(pt.y, 0) + 'px';
+          container.style.bottom = 'auto';
+      }
+  },
+
+  _getElementSize: function (el) {
+      let size = this._size,
+          initialDisplay = el.style.display;
+
+      if (!size || this._sizeChanged) {
+          size = {};
+
+          el.style.left = '-999999px';
+          el.style.right = 'auto';
+          el.style.display = 'block';
+
+          size.x = el.offsetWidth;
+          size.y = el.offsetHeight;
+
+          el.style.left = 'auto';
+          el.style.display = initialDisplay;
+
+          this._sizeChanged = false;
+      }
+
+      return size;
+  },
+
+  _onKeyDown: function (e) {
+      let key = e.keyCode;
+
+      // If ESC pressed and context menu is visible hide it
+      if (key === 27) {
+          this._hide();
+      }
+  },
+
+  _onItemMouseOver: function (e) {
+      L.DomUtil.addClass(e.target || e.srcElement, 'over');
+  },
+
+  _onItemMouseOut: function (e) {
+      L.DomUtil.removeClass(e.target || e.srcElement, 'over');
   }
 });
 
