@@ -37,7 +37,7 @@ jest.setTimeout(30000);
           maxNativeZoom: 4,
           minNativeZoom: 2,
           minZoom: 0,
-          maxZoom: 25
+          maxZoom: 25,
         });
       });
 
@@ -57,7 +57,8 @@ jest.setTimeout(30000);
           maxNativeZoom: 3,
           minNativeZoom: 2,
           minZoom: 0,
-          maxZoom: 25
+          maxZoom: 25,
+          nativeZoom: 0,
         });
       });
 
