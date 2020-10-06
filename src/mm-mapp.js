@@ -1,12 +1,11 @@
-import './leaflet-src.js';  // a lightly modified version of Leaflet for use as browser module
+import './leaflet-src.js';  // a (very slightly) modified version of Leaflet for use as browser module
 import './proj4-src.js';        // modified version of proj4; could be stripped down for mapml
 import './proj4leaflet.js'; // not modified, seems to adapt proj4 for leaflet use.
 import './mapml.js';       // refactored URI usage, replaced with URL standard
 import './Leaflet.fullscreen.js';
 import { MapLayer } from './layer.js';
-import { MapArea } from './map-area.js';
 
-export class WebMap extends HTMLMapElement {
+export class MmMapp extends HTMLElement {
   static get observedAttributes() {
     return ['lat', 'lon', 'zoom', 'projection', 'width', 'height', 'controls'];
   }
@@ -62,40 +61,33 @@ export class WebMap extends HTMLMapElement {
     return this.hasAttribute("zoom") ? this.getAttribute("zoom") : 0;
   }
   set zoom(val) {
-    var parsedVal = parseInt(val,10);
-    if (!isNaN(parsedVal) && (parsedVal >= 0 && parsedVal <= 25)) {
-      this.setAttribute('zoom', parsedVal);
-    }
+      var parsedVal = parseInt(val,10);
+      if (!isNaN(parsedVal) && (parsedVal >= 0 && parsedVal <= 25)) {
+        this.setAttribute('zoom', parsedVal);
+      }
   }
   get layers() {
     return this.getElementsByTagName('layer-');
   }
-  get areas() {
-    return this.getElementsByTagName('area');
-  }
   constructor() {
     // Always call super first in constructor
     super();
+    // SUPER IMPORTANT TO SET THIS UP FIRST SO THAT LEAFLET ISN'T WORKING WITH
+    // A HEIGHT=0 BOX BY DEFAULT.
     this.style.display = "block";
     let tmpl = document.createElement('template');
     tmpl.innerHTML =
     `<link rel="stylesheet" href="${new URL("leaflet.css", import.meta.url).href}">` +
     `<link rel="stylesheet" href="${new URL("leaflet.fullscreen.css", import.meta.url).href}">` +
     `<link rel="stylesheet" href="${new URL("mapml.css", import.meta.url).href}">`;
-
-    const rootDiv = document.createElement('div');
-    // without this you have to omit the doctype, which is bad because
-    // it triggers quirks mode.
-    rootDiv.style.height = "100%";
-    // the map element is inline by default
-    this.style.display = "block";
-    let shadowRoot = rootDiv.attachShadow({mode: 'open'});
+    let shadowRoot = this.attachShadow({mode: 'open'});
     this._container = document.createElement('div');
-    this._container.style.minWidth = "100%";
-    this._container.style.minHeight = "100%";
+    // you have to include this otherwise you have to use quirks mode,
+    // (by omitting the doctype), which is bad.
+    this._container.style.height = "100%";
     shadowRoot.appendChild(tmpl.content.cloneNode(true));
     shadowRoot.appendChild(this._container);
-    this.appendChild(rootDiv);
+
   }
   connectedCallback() {
     if (this.isConnected) {
@@ -154,28 +146,7 @@ export class WebMap extends HTMLMapElement {
             this._fullScreenControl = L.control.fullscreen().addTo(this._map);
           }
         }
-        if (this.hasAttribute('name')) {
-          var name = this.getAttribute('name');
-          if (name) {
-            this.poster = document.querySelector('img[usemap='+'"#'+name+'"]');
-            // firefox has an issue where the attribution control's use of
-            // _container.innerHTML does not work properly if the engine is throwing
-            // exceptions because there are no area element children of the image map
-            // for firefox only, a workaround is to actually remove the image...
-            if (this.poster) {
-              if (L.Browser.gecko) {
-                  this.poster.removeAttribute('usemap');
-              }
-              //this.appendChild(this.poster);
-            }
-          }
-        }
 
-        // undisplay the img in the image map, because it's not needed now
-        // gives a slight fouc, not optimal
-        if (this.poster) {
-          this.poster.style.display = 'none';
-        }
         this._setUpEvents();
         // this.fire('load', {target: this});
       }
@@ -209,7 +180,7 @@ export class WebMap extends HTMLMapElement {
   }
   _dropHandler(event) {
     event.preventDefault();
-    // create a new <layer-> child of this <map> element
+    // create a new <layer-> child of this <mm-mapp> element
       let l = new MapLayer();
       l.src = event.dataTransfer.getData("text");
       l.label = 'Layer';
@@ -429,25 +400,8 @@ export class WebMap extends HTMLMapElement {
         }
       }
     }());
-    if (this.hasAttribute('name')) {
-      var name = this.getAttribute('name');
-      if (name) {
-        this.poster = document.querySelector('img[usemap='+'"#'+name+'"]');
-        // firefox has an issue where the attribution control's use of
-        // _container.innerHTML does not work properly if the engine is throwing
-        // exceptions because there are no area element children of the image map
-        // for firefox only, a workaround is to actually remove the image...
-        if (this.poster) {
-          if (L.Browser.gecko) {
-            this.poster.removeAttribute('usemap');
-          }
-          this._container.appendChild(this.poster);
-        }
-      }
-    }
   }
 }
 // need to provide options { extends: ... }  for custom built-in elements
-window.customElements.define('web-map', WebMap,  { extends: 'map' });
+window.customElements.define('mm-mapp', MmMapp);
 window.customElements.define('layer-', MapLayer);
-window.customElements.define('map-area', MapArea, {extends: 'area'});

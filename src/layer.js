@@ -5,7 +5,7 @@ import './mapml.js';       // modified URI to make the function a property of wi
 
 export class MapLayer extends HTMLElement {
   static get observedAttributes() {
-    return ['src', 'label', 'checked', 'hidden'];
+    return ['src', 'label', 'checked', 'disabled', 'hidden'];
   }
   get src() {
     return this.hasAttribute('src')?this.getAttribute('src'):'';
@@ -46,10 +46,6 @@ export class MapLayer extends HTMLElement {
     } else {
       this.removeAttribute('checked');
     }
-  }
-  
-  get disabled() {
-    return this.disabled;
   }
   
   get hidden() {
@@ -95,6 +91,10 @@ export class MapLayer extends HTMLElement {
     }
   }
   connectedCallback() {
+    // this avoids displaying inline mapml content, such as features and inputs
+    // but does not avoid FOUC. 
+    // To avoid FOUC, use <layer- style="display: none"...>...</layer->
+    this.style = "display: none";
     this._ready();
     // if the map has been attached, set this layer up wrt Leaflet map
     if (this.parentNode._map) {
@@ -114,15 +114,6 @@ export class MapLayer extends HTMLElement {
             this.dispatchEvent(new CustomEvent('labelchanged', {detail: 
               {target: this}}));
           }
-          break;
-      }
-      case 'checked': {
-          if (newValue !== null) {
-            console.log('toggle on');
-          } else {
-            console.log('toggle off');
-          }
-          break;
       }
     }
   }

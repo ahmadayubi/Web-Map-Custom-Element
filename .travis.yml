@@ -1,11 +1,10 @@
 language: node_js
 node_js:
   - node
-dist: bionic
-
+dist: trusty
 install:
  - npm install
  - npm install -g grunt-cli
- - grunt clean copy rollup
+ - grunt clean copy
 script:
  - npm test
