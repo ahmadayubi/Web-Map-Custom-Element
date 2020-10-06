@@ -3634,6 +3634,8 @@ M.MapMLLayerControl = L.Control.Layers.extend({
     onAdd: function () {
         this._initLayout();
         this._map.on('moveend', this._validateExtents, this);
+        //this._map.on('change', this._validateExtents, this);
+        L.DomEvent.on(this.options.mapEl, "layerchange", this._validateExtents, this);
         this._update();
         this._validateExtents();
         return this._container;
