@@ -43,6 +43,7 @@ export var MapMLFeatures = L.FeatureGroup.extend({
     onAdd: function(map){
       L.FeatureGroup.prototype.onAdd.call(this, map);
       if(this._mapmlFeatures)map.on("featurepagination", this.showPaginationFeature, this);
+      map.on('popupopen', this.attachParts, this);
       this._updateTabIndex();
     },
 
@@ -52,6 +53,7 @@ export var MapMLFeatures = L.FeatureGroup.extend({
         map.off("featurepagination", this.showPaginationFeature, this);
         delete this._mapmlFeatures;
       }
+      map.off('popupopen', this.attachParts);
       L.DomUtil.remove(this._container);
     },
 
@@ -95,21 +97,29 @@ export var MapMLFeatures = L.FeatureGroup.extend({
       }
     },
 
-    _previousFeature: function(e){
-      this._map.closePopup();
-      if(this._source._path.previousSibling){
+    _previousFeature: function(e){      
+      if(this._source.subParts.length > 0){
+        this._source.subParts[this._count]._path.focus();
+        this._count = this._count === 0 ? 0 : this._count - 1;
+      } else if(this._source._path.previousSibling){
         this._source._path.previousSibling.focus();
+        this._map.closePopup();
       } else {
         this._source._path.focus();
+        this._map.closePopup();
       }
     },
 
     _nextFeature: function(e){
-      this._map.closePopup();
-      if(this._source._path.nextSibling){
+      if(this._source.subParts.length > 0){
+        this._source.subParts[this._count]._path.focus();
+        this._count = this._count === this._source.subParts.length - 1 ? this._source.subParts.length - 1 : this._count + 1;
+      } else if (this._source._path.nextSibling){
         this._source._path.nextSibling.focus();
+        this._map.closePopup();
       } else {
         this._source._path.focus();
+        this._map.closePopup();
       }
     },
 
@@ -338,7 +348,7 @@ export var MapMLFeatures = L.FeatureGroup.extend({
     },
 	 geometryToLayer: function (mapml, pointToLayer, coordsToLatLng, vectorOptions, nativeCS, zoom) {
     var geometry = mapml.tagName.toUpperCase() === 'FEATURE' ? mapml.getElementsByTagName('geometry')[0] : mapml,
-        latlng, latlngs, coordinates, member, members, linestrings;
+        latlng, latlngs, coordinates, member, members, linestrings, ctx = this, parts;
 
     coordsToLatLng = coordsToLatLng || this.coordsToLatLng;
     var pointOptions = {  opacity: vectorOptions.opacity ? vectorOptions.opacity : null,
@@ -387,7 +397,9 @@ export var MapMLFeatures = L.FeatureGroup.extend({
       case 'POLYGON':
         var rings = geometry.getElementsByTagName('coordinates');
         latlngs = this.coordsToLatLngs(coordinatesToArray(rings), 1, coordsToLatLng, cs, zoom);
-        return new L.Polygon(latlngs, vectorOptions);
+        let polygon = new L.Polygon(latlngs, vectorOptions);
+        polygon.subParts = parts;
+        return polygon;
       case 'MULTIPOLYGON':
         members = geometry.getElementsByTagName('polygon');
         var polygons = new Array(members.length);
@@ -410,19 +422,46 @@ export var MapMLFeatures = L.FeatureGroup.extend({
     //			return new L.FeatureGroup(layers);
 
       default:
+        console.log(parts); //temporary
         console.log('Invalid GeoJSON object.');
         break;
     }
-    function coordinatesToArray(coordinates) {
-      var a = new Array(coordinates.length);
+
+    function coordinatesToArray(coordinates, first = true) {
+      var a = new Array(coordinates.length),
+          localParts = [];
       for (var i=0;i<a.length;i++) {
         a[i]=[];
-        (coordinates[i] || coordinates).textContent.match(/(\S+\s+\S+)/gim).forEach(M.splitCoordinate, a[i]);
+        let coords = (coordinates[i] || coordinates),
+            spans = coords.children;
+        for(let span of spans){
+          let subParts = coordinatesToArray(span, false),
+              spanLayer = new L.Polygon(ctx.coordsToLatLngs(subParts[0], 1, coordsToLatLng, cs, zoom), {...vectorOptions, color:'yellow',});
+              
+          spanLayer.subParts = subParts[1];
+          localParts.push(spanLayer);
+        }
+        coords.textContent = coords.textContent.replace( /(<([^>]+)>)/ig, '');
+        coords.textContent.match(/(\S+\s+\S+)/gim).forEach(M.splitCoordinate, a[i]);
       }
-      return a;
+      if (first){ 
+        parts = localParts;
+        return a;
+      } else {
+        return [a, localParts];
+      }
     }
   },
-        
+
+  attachParts: function (e){
+    if(this._map){
+      for(let part of e.popup._source.subParts){
+        this.addLayer(part);
+        e.popup._source._path.after(part._path);
+        part._path.setAttribute('tabindex', 0);
+      }
+    }
+  },
 
   coordsToLatLng: function (coords, cs, zoom, projection) { // (Array[, Boolean]) -> LatLng
     let pcrs;
